@@ -43,6 +43,36 @@ with open(input_file, 'r') as f:
             if denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
                 amount = float(value)
                 combined_balances[address]['balance_uvdl'] += amount
+                print(f'Updated balance for {address}: {combined_balances[address]["balance_uvdl"]}')
+        show_progress(processed_size, file_size)
+
+# Parse staking section incrementally
+with open(input_file, 'r') as f:
+    parser = ijson.parse(f)
+    for prefix, event, value in parser:
+        processed_size += len(str(value))
+        if prefix == 'app_state.staking.delegations.item.delegator_address' and event == 'string':
+            address = value
+        elif prefix == 'app_state.staking.delegations.item.shares' and event == 'string':
+            shares = float(value)
+            combined_balances[address]['balance_uvdl'] += shares
+            print(f'Updated staking balance for {address}: {combined_balances[address]["balance_uvdl"]}')
+        show_progress(processed_size, file_size)
+
+# Parse lockup section incrementally
+with open(input_file, 'r') as f:
+    parser = ijson.parse(f)
+    for prefix, event, value in parser:
+        processed_size += len(str(value))
+        if prefix == 'app_state.lockup.locks.item.owner' and event == 'string':
+            address = value
+        elif prefix == 'app_state.lockup.locks.item.coins.item.denom' and event == 'string':
+            denom = value
+        elif prefix == 'app_state.lockup.locks.item.coins.item.amount' and event == 'string' and denom:
+            if denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
+                amount = float(value)
+                combined_balances[address]['balance_uvdl'] += amount
+                print(f'Updated lockup balance for {address}: {combined_balances[address]["balance_uvdl"]}')
         show_progress(processed_size, file_size)
 
 # Parse liquidity pool balances in the specific liquidity pool incrementally
@@ -60,6 +90,7 @@ with open(input_file, 'r') as f:
                 amount = float(value)
                 address = prefix.split('.')[4]  # Assuming address can be inferred from the path for simplicity
                 combined_balances[address]['liquidity_pool_balance_uvdl'] += amount
+                print(f'Updated liquidity pool balance for {address}: {combined_balances[address]["liquidity_pool_balance_uvdl"]}')
         elif pool_found and prefix == 'app_state.gamm.pools.item' and event == 'end_map':
             break
         show_progress(processed_size, file_size)
