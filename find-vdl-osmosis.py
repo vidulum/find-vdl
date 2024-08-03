@@ -1,4 +1,6 @@
 import ijson
+import json
+import os
 from collections import defaultdict
 
 # Initialize a dictionary to store combined balances
@@ -15,35 +17,52 @@ def add_balances(coins, address, key):
         if coin['denom'] == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
             combined_balances[address][key] += float(coin['amount'])
 
+# Function to show progress
+def show_progress(current, total):
+    progress = (current / total) * 100
+    print(f'Progress: {progress:.2f}%', end='\r')
+
 # File path for the large JSON file
 input_file = 'dump_12819000_osmosis.json'
+file_size = os.path.getsize(input_file)
+processed_size = 0
+
+# Initialize variables
+address = None
+denom = None
 
 # Parse balances in 'bank' section incrementally
 with open(input_file, 'r') as f:
     for prefix, event, value in ijson.parse(f):
+        processed_size += len(str(value))
         if prefix.endswith('.address') and event == 'string':
             address = value
         elif prefix.endswith('.coins.item.denom') and event == 'string':
             denom = value
-        elif prefix.endswith('.coins.item.amount') and event == 'string' and denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
-            amount = float(value)
-            combined_balances[address]['balance_uvdl'] += amount
+        elif prefix.endswith('.coins.item.amount') and event == 'string' and denom:
+            if denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
+                amount = float(value)
+                combined_balances[address]['balance_uvdl'] += amount
+        show_progress(processed_size, file_size)
 
 # Parse liquidity pool balances in the specific liquidity pool incrementally
 with open(input_file, 'r') as f:
     parser = ijson.parse(f)
     pool_found = False
     for prefix, event, value in parser:
+        processed_size += len(str(value))
         if prefix == 'app_state.gamm.pools.item.id' and event == 'string' and value == '613':
             pool_found = True
         elif pool_found and prefix.endswith('.tokens.item.denom') and event == 'string':
             denom = value
-        elif pool_found and prefix.endswith('.tokens.item.amount') and event == 'string' and denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
-            amount = float(value)
-            address = prefix.split('.')[4]  # Assuming address can be inferred from the path for simplicity
-            combined_balances[address]['liquidity_pool_balance_uvdl'] += amount
+        elif pool_found and prefix.endswith('.tokens.item.amount') and event == 'string' and denom:
+            if denom == 'ibc/E7B35499CFBEB0FF5778127ABA4FB2C4B79A6B8D3D831D4379C4048C238796BD':
+                amount = float(value)
+                address = prefix.split('.')[4]  # Assuming address can be inferred from the path for simplicity
+                combined_balances[address]['liquidity_pool_balance_uvdl'] += amount
         elif pool_found and prefix == 'app_state.gamm.pools.item' and event == 'end_map':
             break
+        show_progress(processed_size, file_size)
 
 # Update the final_claim_uvdl and vdl_final_claim_balance
 for address, balances in combined_balances.items():
@@ -73,4 +92,4 @@ output_file = 'osmosis-balances.json'
 with open(output_file, 'w') as f:
     json.dump(output, f, indent=2)
 
-print(f'Results have been written to {output_file}')
+print(f'\nResults have been written to {output_file}')
